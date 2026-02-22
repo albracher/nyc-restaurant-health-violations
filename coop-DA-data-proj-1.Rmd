@@ -1,0 +1,156 @@
+---
+title: "coop-careers-data-proj-1"
+author: "allen phu"
+date: "2025-09-16"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Initial Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+# load libraries
+library(tidyverse)
+library(lubridate)
+library(tidymodels)
+library(writexl)
+library(showtext)
+
+# load the 'Lato' font from Google Fonts and give it the nickname 'lato'
+font_add_google("Lato", "lato")
+
+# tell R to use the showtext package for all plots
+showtext_auto()
+```
+
+# Data Load
+
+```{r}
+# load raw data
+data <- read.csv("raw_data/nyc_restaurant_inspection.csv")
+```
+
+```{r}
+# peek at columns, what their values are
+glimpse(data)
+```
+
+# Data Cleaning
+
+Ok, so what does **drop_na()** do in R? From direct documentation: drops rows where any column (in this case, the entire dataset/dataframe) contains a missing value. So, in this case, anything with NA.
+
+## wtf is NA?
+
+NA is different from "empty"; **NA** is considered "separate" and "missing", **"empty"** or **""** is a separate thing completely.
+
+So first, we need to add row numbers; this is pre-processing for later.
+
+```{r create-id-column}
+# throwing a row number on the original data so we can track stuff later
+data_with_id <- data |>
+  mutate(original_row = row_number())
+```
+
+My prof from undergrad described pivot_longer as this: *"For when some of the column names are not names of variables, but values of a variable"*
+
+```{r find-na-locations}
+# we want to find where "NA" values are
+na_locations <- data_with_id |>
+  # first, just grab the rows that have an NA somewhere in them
+  filter(if_any(-original_row, is.na)) |>
+  # make everything a character so the pivot doesn't give us errors
+  mutate(across(-original_row, as.character)) |>
+  # convert our table to a long/increase rows and 
+  pivot_longer(
+    cols = -original_row,
+    names_to = "column_name",
+    values_to = "value"
+  ) |>
+  # now, just keep the lines that are NA
+  filter(is.na(value))
+
+# look at list
+# print(na_locations)
+```
+
+# Correct Data Types
+
+However, we also have empty columns, so we can find that too.
+
+`{# {r find-empty-locations} # # ok, same thing but for the empty "" values # empty_string_locations <- data_with_id |> #   # grab any row that has an empty "" in a character column #   filter(if_any(where(is.character),function(x) x == "")) |> #   # again, making everything a character to avoid that pivot error #   mutate(across(-original_row, as.character)) |> #   # convert table into "longer" table #   pivot_longer( #     cols = -original_row, #     names_to = "column_name", #     values_to = "value" #   ) |> #   # just find the rows that are actually empty strings #   filter(value == "") #  # # print out list of empty value locations # print(empty_string_locations)`
+
+```{r}
+# actually clean the data here, with the correct order of operations
+cleaned_data <- data |>
+  # remove rows with duplicate CAMIS/Date/Code
+  distinct(CAMIS, INSPECTION.DATE, VIOLATION.CODE, .keep_all = TRUE) |> 
+  # make the date columns "actual dates" first
+  mutate(
+    INSPECTION.DATE = mdy(INSPECTION.DATE),
+    GRADE.DATE = mdy(GRADE.DATE),
+    RECORD.DATE = mdy(RECORD.DATE)) |>
+  # now, get rid of rows with NA and empty strings
+  # why? mdy() will automatically convert "" into an NA, then drop_NA() will remove it/drop the row
+  drop_na() |>
+  filter(!if_any(where(is.character), function(x) x == ""))
+```
+
+```{r}
+# use count() to find which combinations have a count (n) greater than 1
+duplicate_summary <- cleaned_data |>
+  count(CAMIS, INSPECTION.DATE, sort = TRUE) |>
+  filter(n > 1)
+
+# print the summary of which records are duplicated
+# print(duplicate_summary)
+```
+
+```{r glimpse-and-summary-cleaned-data}
+# quick check to see if our cleaned data looks right
+glimpse(cleaned_data)
+# summary(cleaned_data)
+```
+
+```{r}
+# Step 1: Create the data table for the plot
+top_10_critical <- cleaned_data |> 
+  filter(CRITICAL.FLAG == "Critical") |> 
+  count(VIOLATION.CODE, sort = TRUE) |> 
+  slice_head(n = 10)
+
+# Now, print the table so you can see the result of slice_head()
+print(top_10_critical)
+```
+
+```{r barchart-high-def, fig.width=10, fig.height=7, dpi=300}
+top_10_critical |>
+  mutate(VIOLATION.CODE = fct_reorder(VIOLATION.CODE, n)) |>
+  ggplot(aes(x = n, y = VIOLATION.CODE)) +
+  geom_col(fill = "firebrick") +
+  geom_text(aes(label = n), hjust = -0.2, size = 16) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Top 10 Critical Violation Codes",
+    x = "Total Count of Violations",
+    y = "Violation Code"
+  ) +
+  
+  # FIX 1: Increase the base font size for the whole plot
+  theme_minimal(base_size = 60) +
+  
+  # FIX 2: Remove ALL grid lines (both vertical and horizontal)
+  theme(
+    text = element_text(family = "lato"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+```
+
+# Write to CSV, XLSX
+
+`{# {r} # # save data # write_csv(cleaned_data, "cleaned_nyc_inspections.csv") # write_xlsx(cleaned_data, "cleaned_nyc_inspections.xlsx")`
