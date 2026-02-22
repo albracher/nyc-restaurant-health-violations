@@ -4,6 +4,8 @@
 ## Project Overview
 This project was a data analysis of NYC restaurant inspection records in order to identify health violation trends across different cuisines and boroughs. This was the first project we did as part of the fellowship, and focuses on data cleaning, exploratory data analysis, and visualizing critical health risks.
 
+For simplicity's sake, if you want to look at a quick and dirty PDF render I made to try and show my groupmates what my workflow was in R, you can view the HTML/PDF.
+
 ## What was used?
 I used R to do this project, my groupmates used Excel mainly. In regards to libraries, I used tidyverse, lubridate, tidymodels, writexl, and showtext.
 
